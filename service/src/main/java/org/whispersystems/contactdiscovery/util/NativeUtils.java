@@ -17,8 +17,6 @@
 
 package org.whispersystems.contactdiscovery.util;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,24 +25,23 @@ import java.nio.file.Path;
 
 public class NativeUtils {
 
-  public static File extractNativeResource(String resource) throws IOException {
-    File tempFile = Files.createTempFile("resource", "so").toFile();
-    tempFile.deleteOnExit();
+  public static Path extractNativeResource(String resource) throws IOException {
+    Path tempFilePath = Files.createTempFile("resource", "so");
+    tempFilePath.toFile().deleteOnExit();
 
-    OutputStream out = new FileOutputStream(tempFile);
-    InputStream  in  = NativeUtils.class.getResourceAsStream(resource);
+    try(OutputStream out = Files.newOutputStream(tempFilePath)) {
+      InputStream in = NativeUtils.class.getResourceAsStream(resource);
+      if (in == null) {
+        throw new IOException("No such resource: " + resource);
+      }
+      FileUtils.copy(in, out);
+    }
 
-    if (in == null) throw new IOException("No such resource: " + resource);
-
-    FileUtils.copy(in, out);
-
-    return tempFile;
+    return tempFilePath;
   }
 
   public static void loadNativeResource(String resource) throws IOException {
-    File extracted = extractNativeResource(resource);
-    System.load(extracted.getAbsolutePath());
+    Path extracted = extractNativeResource(resource);
+    System.load(extracted.toAbsolutePath().toString());
   }
-
-
 }

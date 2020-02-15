@@ -24,6 +24,7 @@ import org.whispersystems.contactdiscovery.util.NativeUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -42,8 +43,8 @@ public class SgxEnclaveManager implements Managed {
 
   public SgxEnclaveManager(EnclaveConfiguration configuration) throws IOException {
     for (EnclaveInstanceConfiguration instance : configuration.getInstances()) {
-      File enclaveLibrary = NativeUtils.extractNativeResource("/enclave/" + instance.getMrenclave() + ".so");
-      enclaves.put(instance.getMrenclave(), new SgxEnclave(enclaveLibrary.getAbsolutePath(),
+      Path enclaveLibrary = NativeUtils.extractNativeResource("/enclave/" + instance.getMrenclave() + ".so");
+      enclaves.put(instance.getMrenclave(), new SgxEnclave(enclaveLibrary.toAbsolutePath().toString(),
                                                            instance.isDebug(), null,
                                                            configuration.getSpid()));
     }

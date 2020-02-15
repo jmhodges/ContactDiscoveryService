@@ -138,16 +138,28 @@ public class RequestManager implements Managed {
       int batchSize = requests.stream().mapToInt(r -> r.getRequest().getAddressCount()).sum();
       try (SgxEnclave.SgxsdBatch batch = enclave.newBatch(threadId, batchSize)) {
         for (PendingRequest request : requests) {
-          SgxsdMessage enclaveMessage = new SgxsdMessage(request.getRequest().getData(),
-                  request.getRequest().getIv(),
-                  request.getRequest().getMac(),
-                  request.getRequest().getRequestId());
-
-          batch.add(enclaveMessage, request.getRequest().getAddressCount())
-                  .thenApply(response -> request.getResponse().complete(new DiscoveryResponse(response.getIv(),
-                          response.getData(),
-                          response.getMac())))
-                  .exceptionally(exception -> request.getResponse().completeExceptionally(exception));
+          SgxsdMessage enclaveMessage;
+          try {
+            enclaveMessage = new SgxsdMessage(request.getRequest().getData(),
+                    request.getRequest().getIv(),
+                    request.getRequest().getMac(),
+                    request.getRequest().getRequestId());
+          } catch (IllegalArgumentException e) {
+            logger.warn("Null argument passed to SgxdMessage", e);
+            closeRequestsWithException(requests, e);
+            return;
+          }
+          try {
+            batch.add(enclaveMessage, request.getRequest().getAddressCount())
+                    .thenApply(response -> request.getResponse().complete(new DiscoveryResponse(response.getIv(),
+                            response.getData(),
+                            response.getMac())))
+                    .exceptionally(exception -> request.getResponse().completeExceptionally(exception));
+          } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.warn("Invalid message was being passed to request batch", e);
+            closeRequestsWithException(requests, e);
+            return;
+          }
         }
 
         processedNumbersMeter.mark(batchSize);

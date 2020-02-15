@@ -22,6 +22,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.SharedMetricRegistries;
 import com.codahale.metrics.Timer;
+import io.dropwizard.lifecycle.Managed;
 import net.openhft.affinity.Affinity;
 import net.openhft.affinity.AffinityLock;
 import org.apache.commons.lang3.tuple.Pair;
@@ -32,18 +33,17 @@ import org.whispersystems.contactdiscovery.directory.DirectoryUnavailableExcepti
 import org.whispersystems.contactdiscovery.enclave.NoSuchEnclaveException;
 import org.whispersystems.contactdiscovery.enclave.SgxEnclave;
 import org.whispersystems.contactdiscovery.enclave.SgxEnclaveManager;
+import org.whispersystems.contactdiscovery.enclave.SgxException;
 import org.whispersystems.contactdiscovery.enclave.SgxsdMessage;
 import org.whispersystems.contactdiscovery.entities.DiscoveryRequest;
 import org.whispersystems.contactdiscovery.entities.DiscoveryResponse;
+import org.whispersystems.contactdiscovery.util.Constants;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-
-import io.dropwizard.lifecycle.Managed;
-import org.whispersystems.contactdiscovery.util.Constants;
 
 import static com.codahale.metrics.MetricRegistry.name;
 
@@ -103,12 +103,12 @@ public class RequestManager implements Managed {
 
   private class EnclaveThread extends Thread {
 
-    private final int              threadId;
+    private final int threadId;
     private final DirectoryManager directoryManager;
 
     private EnclaveThread(DirectoryManager directoryManager, int threadId) {
       this.directoryManager = directoryManager;
-      this.threadId         = threadId;
+      this.threadId = threadId;
     }
 
     @Override
@@ -116,10 +116,10 @@ public class RequestManager implements Managed {
       try (AffinityLock lock = Affinity.acquireCore()) {
         logger.info(this.getClass().getSimpleName() + " on CPU: " + lock.cpuId());
 
-        for (;;) {
-          Pair<SgxEnclave, List<PendingRequest>> work     = pending.get(targetBatchSize);
-          SgxEnclave                             enclave  = work.getLeft();
-          List<PendingRequest>                   requests = work.getRight();
+        for (; ; ) {
+          Pair<SgxEnclave, List<PendingRequest>> work = pending.get(targetBatchSize);
+          SgxEnclave enclave = work.getLeft();
+          List<PendingRequest> requests = work.getRight();
 
           processBatch(enclave, requests);
         }
@@ -127,39 +127,52 @@ public class RequestManager implements Managed {
     }
 
     private void processBatch(SgxEnclave enclave, List<PendingRequest> requests) {
+      Pair<ByteBuffer, Long> registeredUsers;
       try {
-        Pair<ByteBuffer, Long> registeredUsers = directoryManager.getAddressList();
+        registeredUsers = directoryManager.getAddressList();
+      } catch (DirectoryUnavailableException e) {
+        logger.warn("Exception getting address list for request batch", e);
+        closeRequestsWithException(requests, e);
+        return;
+      }
+      int batchSize = requests.stream().mapToInt(r -> r.getRequest().getAddressCount()).sum();
+      try (SgxEnclave.SgxsdBatch batch = enclave.newBatch(threadId, batchSize)) {
+        for (PendingRequest request : requests) {
+          SgxsdMessage enclaveMessage = new SgxsdMessage(request.getRequest().getData(),
+                  request.getRequest().getIv(),
+                  request.getRequest().getMac(),
+                  request.getRequest().getRequestId());
 
-        int batchSize = requests.stream().mapToInt(r -> r.getRequest().getAddressCount()).sum();
-        try (SgxEnclave.SgxsdBatch batch = enclave.newBatch(threadId, batchSize)) {
+          batch.add(enclaveMessage, request.getRequest().getAddressCount())
+                  .thenApply(response -> request.getResponse().complete(new DiscoveryResponse(response.getIv(),
+                          response.getData(),
+                          response.getMac())))
+                  .exceptionally(exception -> request.getResponse().completeExceptionally(exception));
+        }
 
-          for (PendingRequest request : requests) {
-            SgxsdMessage enclaveMessage = new SgxsdMessage(request.getRequest().getData(),
-                                                           request.getRequest().getIv(),
-                                                           request.getRequest().getMac(),
-                                                           request.getRequest().getRequestId());
+        processedNumbersMeter.mark(batchSize);
+        batchSizeHistogram.update(batchSize);
 
-            batch.add(enclaveMessage, request.getRequest().getAddressCount())
-                 .thenApply(response -> request.getResponse().complete(new DiscoveryResponse(response.getIv(),
-                                                                                             response.getData(),
-                                                                                             response.getMac())))
-                 .exceptionally(exception -> request.getResponse().completeExceptionally(exception));
-          }
-
-          processedNumbersMeter.mark(batchSize);
-          batchSizeHistogram.update(batchSize);
-
-          try (Timer.Context timer = processBatchTimer.time()) {
+        try (Timer.Context timer = processBatchTimer.time()) {
+          try {
             batch.process(registeredUsers.getLeft(), registeredUsers.getRight());
+          } catch (SgxException e) {
+            logger.warn("Exception processing request batch", e);
+            closeRequestsWithException(requests, e);
+            return;
           }
         }
-      } catch (Throwable t) {
-        logger.warn("Exception processing request batch", t);
-
-        requests.stream()
-                .map(PendingRequest::getResponse)
-                .forEach(future -> future.completeExceptionally(t));
+      } catch (SgxException e) {
+        logger.warn("Exception creating request batch", e);
+        closeRequestsWithException(requests, e);
+        return;
       }
+    }
+
+    private void closeRequestsWithException(List<PendingRequest> requests, Exception e) {
+      requests.stream()
+              .map(PendingRequest::getResponse)
+              .forEach(future -> future.completeExceptionally(e));
     }
   }
 }

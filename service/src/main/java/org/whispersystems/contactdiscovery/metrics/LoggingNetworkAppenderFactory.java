@@ -133,7 +133,15 @@ public class LoggingNetworkAppenderFactory extends AbstractAppenderFactory<ILogg
 
     @Override
     protected void append(E loggingEvent) {
-      syslog.log(getSeverityForEvent(loggingEvent), layout.doLayout(loggingEvent));
+      SyslogIF localSyslog;
+      Layout<E> localLayout;
+      synchronized (this) {
+        localSyslog = syslog;
+        localLayout = layout;
+      }
+      if (localSyslog != null) {
+        localSyslog.log(getSeverityForEvent(loggingEvent), localLayout.doLayout(loggingEvent));
+      }
     }
 
     @Override
@@ -180,19 +188,27 @@ public class LoggingNetworkAppenderFactory extends AbstractAppenderFactory<ILogg
     }
 
     public SyslogConfigIF getSyslogConfig() {
-      return syslogConfig;
+      synchronized (this) {
+        return syslogConfig;
+      }
     }
 
     public void setSyslogConfig(SyslogConfigIF syslogConfig) {
-      this.syslogConfig = syslogConfig;
+      synchronized (this) {
+        this.syslogConfig = syslogConfig;
+      }
     }
 
     public Layout<E> getLayout() {
-      return layout;
+      synchronized (this) {
+        return layout;
+      }
     }
 
     public void setLayout(Layout<E> layout) {
-      this.layout = layout;
+      synchronized (this) {
+        this.layout = layout;
+      }
     }
   }
 }

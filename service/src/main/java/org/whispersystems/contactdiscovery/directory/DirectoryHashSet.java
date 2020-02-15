@@ -56,6 +56,10 @@ public class DirectoryHashSet {
   }
 
   public ByteBuffer getDirectByteBuffer() {
+    // FIXME this is not thread-safe. It's also required by the JNI C code to be a direct ByteBuffer
+    // and not just an ordinary one in order to be sent to the enclave correctly. I wonder if we couldn't instead use
+    // a byte[] in its place. Alternatively, this could be a synchronized method that takes a direct ByteBuffer and
+    // copies curBuffer's contents into the given buffer.
     return curBuffer;
   }
 

@@ -28,6 +28,7 @@ public class NetworkReceivedGauge extends NetworkGauge {
       long             timestamp       = System.currentTimeMillis();
       Pair<Long, Long> sentAndReceived = getSentReceived();
       double           bytesReceived   = sentAndReceived.second() - lastReceived;
+      // FIXME fix types here by changing "1000" to "1000d".
       double           secondsElapsed  = (timestamp - this.lastTimestamp) / 1000;
       double           result          = bytesReceived / secondsElapsed;
 

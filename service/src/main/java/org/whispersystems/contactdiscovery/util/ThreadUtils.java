@@ -21,6 +21,8 @@ public class ThreadUtils {
 
   public static void wait(Object object) {
     try {
+      // FIXME This, at the very least, has to call Thread.currentThread().interrupt(). But it's possible we could
+      //  refactor our code to never need this.
       object.wait();
     } catch (InterruptedException e) {
       throw new AssertionError(e);

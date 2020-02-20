@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 public class NativeUtils {
 
@@ -31,6 +30,7 @@ public class NativeUtils {
     File tempFile = Files.createTempFile("resource", "so").toFile();
     tempFile.deleteOnExit();
 
+    // FIXME do some try-with-resources work here. It might be easier if we return Path from here. I think I have that in a branch.
     OutputStream out = new FileOutputStream(tempFile);
     InputStream  in  = NativeUtils.class.getResourceAsStream(resource);
 

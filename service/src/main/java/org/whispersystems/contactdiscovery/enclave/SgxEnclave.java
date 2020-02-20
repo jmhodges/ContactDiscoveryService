@@ -22,10 +22,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.crypto.AEADBadTagException;
 import java.nio.ByteBuffer;
-import java.security.NoSuchAlgorithmException;
-import java.util.concurrent.CompletableFuture;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Java interface for interacting with an SGX enclave
@@ -114,6 +113,8 @@ public class SgxEnclave implements Runnable {
     while (!isStopped()) {
       try {
         // native will call back into runEnclave
+
+        // FIXME copy lastLaunchToken over under a synchronized(this) to solve spotbugs:check problem.
         nativeEnclaveStart(enclavePath, debug, lastLaunchToken, PENDING_REQUESTS_TABLE_ORDER,
                            (enclaveId, gid, launchToken) -> {
                              synchronized(SgxEnclave.this) {
@@ -150,6 +151,7 @@ public class SgxEnclave implements Runnable {
 
   private void handleSgxException(SgxException ex) {
     if (ex.getCode() <= Integer.MAX_VALUE) {
+      // FIXME default case?
       switch ((int) ex.getCode()) {
         case SgxException.SGX_ERROR_INVALID_PARAMETER: throw new IllegalArgumentException(ex.getName());
         case SgxException.SGX_ERROR_INVALID_STATE:     throw new IllegalStateException(ex.getName());
@@ -164,6 +166,7 @@ public class SgxEnclave implements Runnable {
   }
   private Exception convertSgxException(SgxException ex) {
     if (ex.getCode() <= Integer.MAX_VALUE) {
+      // FIXME default case?
       switch ((int) ex.getCode()) {
         case SgxException.SGXSD_ERROR_PENDING_REQUEST_NOT_FOUND: return new NoSuchPendingRequestException();
         case SgxException.SGX_ERROR_MAC_MISMATCH:                return new AEADBadTagException();

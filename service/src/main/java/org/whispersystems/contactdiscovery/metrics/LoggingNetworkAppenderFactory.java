@@ -1,8 +1,19 @@
 package org.whispersystems.contactdiscovery.metrics;
 
 
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.util.LevelToSyslogSeverity;
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.AppenderBase;
+import ch.qos.logback.core.Layout;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import io.dropwizard.logging.AbstractAppenderFactory;
+import io.dropwizard.logging.async.AsyncAppenderFactory;
+import io.dropwizard.logging.filter.LevelFilterFactory;
+import io.dropwizard.logging.layout.LayoutFactory;
+import io.dropwizard.validation.PortRange;
 import org.hibernate.validator.constraints.NotEmpty;
 import org.productivity.java.syslog4j.SyslogConfigIF;
 import org.productivity.java.syslog4j.SyslogIF;
@@ -11,18 +22,6 @@ import org.productivity.java.syslog4j.impl.net.tcp.ssl.SSLTCPNetSyslogConfig;
 
 import javax.validation.constraints.NotNull;
 import java.util.TimeZone;
-
-import ch.qos.logback.classic.LoggerContext;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.classic.util.LevelToSyslogSeverity;
-import ch.qos.logback.core.Appender;
-import ch.qos.logback.core.AppenderBase;
-import ch.qos.logback.core.Layout;
-import io.dropwizard.logging.AbstractAppenderFactory;
-import io.dropwizard.logging.async.AsyncAppenderFactory;
-import io.dropwizard.logging.filter.LevelFilterFactory;
-import io.dropwizard.logging.layout.LayoutFactory;
-import io.dropwizard.validation.PortRange;
 
 @JsonTypeName("papertrail")
 public class LoggingNetworkAppenderFactory extends AbstractAppenderFactory<ILoggingEvent> {
@@ -145,6 +144,7 @@ public class LoggingNetworkAppenderFactory extends AbstractAppenderFactory<ILogg
           Class syslogClass = syslogConfig.getSyslogClass();
           syslog = (SyslogIF) syslogClass.newInstance();
 
+          // FIXME I have a branch that fixes this race condition.
           syslog.initialize(syslogClass.getSimpleName(), syslogConfig);
         } catch (ClassCastException | IllegalAccessException | InstantiationException cse) {
           throw new SyslogRuntimeException(cse);

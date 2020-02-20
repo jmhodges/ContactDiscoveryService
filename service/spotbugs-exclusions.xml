@@ -1,0 +1,12 @@
+<FindBugsFilter>
+
+  <Match>
+    <!-- Caused by Java 11+ (until at least 13.0.2 at time of writing) generating a null check on try with resources. This passed on Java 8 -->
+    <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE" />
+  </Match>
+
+  <Match>
+    <!-- FIXME ignore temporarily -->
+    <Bug pattern="DM_DEFAULT_ENCODING" />
+  </Match>
+</FindBugsFilter>
